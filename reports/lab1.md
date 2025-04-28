@@ -19,6 +19,42 @@
     - 在TaskManager的impl块*外*增加两个function:syscall_count_get,syscall_count_inc，包裹上述两个函数。
     - 在syscall函数中调用syscall_count_inc;在sys_trace函数中分支3调用syscall_count_get。
 
-# 简答作业
+## 简答作业
 **it seems that bold is invalid for chinese**
-1. 
+(1)
+-版本：[rustsbi] Implementation     : RustSBI-QEMU Version 0.2.0-alpha.2
+-运行结果：我不太了解该如何运行那些测例，所以我在ci-user目录下运行 make test CHAPTER=2 并没有panic，但有如下输出，我觉得好像是和测例对应的。
+```
+    [kernel] PageFault in application, bad addr = 0x0, bad instruction = 0x804003a4, kernel killed it.
+    [kernel] IllegalInstruction in application, kernel killed it.
+    [kernel] IllegalInstruction in application, kernel killed it.
+    [kernel] Panicked at src/syscall/fs.rs:11 called `Result::unwrap()` on an `Err` value: Utf8Error { valid_up_to: 3, error_len: Some(1) }
+```
+(2)trap.S
+    1.刚进入__restore时，sp代表的system stack，即指向内核栈（栈顶）。
+      __restore的两种使用情景：
+        - 正常的上下文切换
+        - 系统第一次由系统态进入用户态
+    2.特殊处理了以下三个寄存器
+
+        | name | function |
+        |:---:|:---:|
+        | `sstatus` | SPP 等字段给出 Trap 发生之前 CPU 处在哪个特权级（S/U）等信息 |
+        | `sepc` | 当 Trap 是一个异常的时候，记录 Trap 发生之前执行的最后一条指令的地址 |
+        | `sscratch` | 指向用户栈（栈顶）*和sp交换后  |
+    
+        - sstatus保存了trap发生之前cpu所处的特权级别，这样在执行sret后，cpu可以自动切换会U-mode，从而保证正确的访问权限。
+        - sepc用于返回正确的位置，使能够按照原来的控制流/顺序继续执行.
+        - sscratch，保存用户栈栈顶指针，这样执行完处理程序之后可以恢复原有的用户栈.
+    3.
+        - 跳过了x2，因为L45已经把x2的内容（用户栈栈顶）加载到t2中，并恢复到了sscratch中，故此处直接跳过即可。
+        - 跳过了x4，因为x4是tp（thread pointer）线程指针寄存器，实验指导书上写到："除非我们手动出于一些特殊用途使用它，否则一般也不会被用到"。但具体为什么，我还是不了解。（__alltraps中也并未处理x4，此处对应忽略）
+    4.
+        -该指令之后，sp中的值为用户栈栈顶，sscratch中的值为内核栈栈顶
+    5. 
+        - 状态切换发生在sret 
+        - sret会跳转到sepc保存的返回地址，从中断发生的下一条指令继续执行，即从内核态恢复到用户态。
+    6.
+        - 该指令之后，sp中的值为内核栈栈顶，sscratch中的值为用户栈栈顶
+    7.
+        - 从U态进入S态，是从用户调用ecall/发生异常之后硬件自动切换的，早于trap.S的第一条指令。
