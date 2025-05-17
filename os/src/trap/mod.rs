@@ -68,33 +68,33 @@ pub fn trap_handler() -> ! {
             // get system call return value
             cx.x[10] = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]) as usize;
         }
-        // Trap::Exception(Exception::StoreFault)
-        // | Trap::Exception(Exception::StorePageFault)
-        // | Trap::Exception(Exception::LoadFault)
-        // | Trap::Exception(Exception::LoadPageFault) => {
-            
-        //     println!("[kernel] PageFault in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.", stval, cx.sepc);
-        //     exit_current_and_run_next();
-        // }
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
             
-                if scause.cause() == Trap::Exception(Exception::StoreFault) {
-                    println!("[kernel] StoreFault at {:#x}, instruction={:#x}", stval, cx.sepc);
-                }
-                if scause.cause()  == Trap::Exception(Exception::StorePageFault)  {
-                    println!("[kernel] StorePageFault at {:#x}, instruction={:#x}", stval, cx.sepc);
-                }
-                if scause.cause()  == Trap::Exception(Exception::LoadFault){
-                    println!("[kernel] LoadFault at {:#x}, instruction={:#x}", stval, cx.sepc);
-                }
-                if scause.cause()  == Trap::Exception(Exception::LoadPageFault) {
-                    println!("[kernel] LoadPageFault at {:#x}, instruction={:#x}", stval, cx.sepc);
-                }
+            println!("[kernel] PageFault in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.", stval, cx.sepc);
             exit_current_and_run_next();
         }
+        // Trap::Exception(Exception::StoreFault)
+        // | Trap::Exception(Exception::StorePageFault)
+        // | Trap::Exception(Exception::LoadFault)
+        // | Trap::Exception(Exception::LoadPageFault) => {
+            
+        //         if scause.cause() == Trap::Exception(Exception::StoreFault) {
+        //             println!("[kernel] StoreFault at {:#x}, instruction={:#x}", stval, cx.sepc);
+        //         }
+        //         if scause.cause()  == Trap::Exception(Exception::StorePageFault)  {
+        //             println!("[kernel] StorePageFault at {:#x}, instruction={:#x}", stval, cx.sepc);
+        //         }
+        //         if scause.cause()  == Trap::Exception(Exception::LoadFault){
+        //             println!("[kernel] LoadFault at {:#x}, instruction={:#x}", stval, cx.sepc);
+        //         }
+        //         if scause.cause()  == Trap::Exception(Exception::LoadPageFault) {
+        //             println!("[kernel] LoadPageFault at {:#x}, instruction={:#x}", stval, cx.sepc);
+        //         }
+        //     exit_current_and_run_next();
+        // }
         Trap::Exception(Exception::IllegalInstruction) => {
             println!("[kernel] IllegalInstruction in application, kernel killed it.");
             exit_current_and_run_next();
