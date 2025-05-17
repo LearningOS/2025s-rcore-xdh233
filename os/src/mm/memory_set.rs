@@ -1,6 +1,6 @@
 //! Implementation of [`MapArea`] and [`MemorySet`].
 
-use super::{frame_alloc, FrameTracker};
+use super::{frame_alloc,FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
@@ -242,6 +242,9 @@ impl MemorySet {
             .find(|area| area.vpn_range.get_start() == start.floor())
         {
             area.shrink_to(&mut self.page_table, new_end.ceil());
+            if(start==new_end){
+                self.areas.retain(|area| area.vpn_range.get_start() != start.floor());
+            }// 为啥不需要
             true
         } else {
             false
@@ -296,10 +299,12 @@ impl MapArea {
             MapType::Framed => {
                 let frame = frame_alloc().unwrap();
                 ppn = frame.ppn;
+            println!("分配物理页: {:?}", ppn);
                 self.data_frames.insert(vpn, frame);
             }
         }
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
+        //println!("pte_flags:{:?}",pte_flags);
         page_table.map(vpn, ppn, pte_flags);
     }
     #[allow(unused)]

@@ -1,6 +1,9 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
-
+use crate::config::PAGE_SIZE;
+use crate::task::{change_program_brk, exit_current_and_run_next, read_from_va,
+     suspend_current_and_run_next, write_to_va, write_to_va_timeval, map_len_to_start, unmap_len_to_start, syscall_count_get};
+use crate::mm::VirtAddr;
+use crate::timer::get_time_us;
 #[repr(C)]
 #[derive(Debug)]
 pub struct TimeVal {
@@ -27,26 +30,62 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let us: usize = get_time_us();
+    //_ts 是虚拟地址
+    let time_val = TimeVal {
+            sec: us / 1_000_000,
+            usec: us % 1_000_000,
+        };
+    let va = VirtAddr::from(_ts as usize);  // 先转 usize，再转 VirtAddr
+    //println!("before");
+    write_to_va_timeval::<TimeVal>(va, time_val)
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    match _trace_request {
+        0 => {
+            //如果 trace_request 为 0，则 id 应被视作 *const u8 ，表示读取当前任务 id 地址处一个字节的无符号整数值。此时应忽略 data 参数。返回值为 id 地址处的值。
+	        //若对应用户地址不可见或不可读，则返回值应为-1
+            read_from_va(VirtAddr(_id))
+        }
+        1 => {
+            // syscall trace with data
+            write_to_va(VirtAddr(_id),_data as u8)
+        }
+        2 => {
+            // syscall trace with id
+            syscall_count_get(_id) as isize
+        }
+        _ => {
+            // unknown request
+            return -1;
+        }
+    }
 }
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    if _start & (PAGE_SIZE - 1) !=0 || _port & !0x7 !=0 || _port & 0x7 ==0{
+        -1
+    }else{
+        println!("test");
+        map_len_to_start(_start, _len, _port)
+    }
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    if _start & (PAGE_SIZE - 1) !=0 {
+        -1
+    }else{
+        unmap_len_to_start(_start, _len)
+    }
+    //-1
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
