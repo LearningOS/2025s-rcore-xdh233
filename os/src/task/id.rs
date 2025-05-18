@@ -25,7 +25,7 @@ impl RecycleAllocator {
         if let Some(id) = self.recycled.pop() {
             id
         } else {
-            self.current += 1;
+            self.current += 1;  //原来current指的是下一个可用的id号
             self.current - 1
         }
     }
@@ -33,7 +33,7 @@ impl RecycleAllocator {
         assert!(id < self.current);
         assert!(
             !self.recycled.iter().any(|i| *i == id),
-            "id {} has been deallocated!",
+            "id {} has been deallocated!",      //防止重复释放
             id
         );
         self.recycled.push(id);

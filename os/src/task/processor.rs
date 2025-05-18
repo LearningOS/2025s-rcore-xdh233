@@ -62,7 +62,7 @@ pub fn run_tasks() {
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
             // release coming task_inner manually
-            drop(task_inner);
+            drop(task_inner);       //释放死锁 为什么drop是用来干这个的？
             // release coming task TCB manually
             processor.current = Some(task);
             // release processor manually

@@ -97,7 +97,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // drop task manually to maintain rc correctly
     drop(task);
     // we do not have to save task context
-    let mut _unused = TaskContext::zero_init();
+    let mut _unused = TaskContext::zero_init(); //无需保存上下文因为这个task已经没了 但还需要空上下文作为schedule的参数
     schedule(&mut _unused as *mut _);
 }
 
