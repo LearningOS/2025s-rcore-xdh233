@@ -18,7 +18,7 @@
 
 ### 遇到的问题
     - 本地测试通过，ci测试时，ch6_file3执行到iteration8就会超时，然后被kill掉。
-    - 解决方法：把block_
+    - 解决方法：把write相关的block_cache_sync_all()，close里添加这个。不知道是否合理
 ## 问答作业
 ### 在我们的easy-fs中，root inode起着什么作用？如果root inode中的内容损坏了，会发生什么？
     - ROOT_INODE是所有文件的父目录，是文件系统的入口点。如果它的内容损坏了，那么所有其它inode都无法被访问到了（逻辑上的），虽然它们仍存在于文件系统中（物理上的）。
