@@ -1,5 +1,7 @@
+use crate::block_cache_sync_all;
+
 use super::{
-    block_cache_sync_all, get_block_cache, BlockDevice, DirEntry, DiskInode, DiskInodeType,
+    get_block_cache, BlockDevice, DirEntry, DiskInode, DiskInodeType,
     EasyFileSystem, DIRENT_SZ,
 };
 use alloc::string::String;
@@ -80,13 +82,13 @@ impl Inode {
         disk_inode: &mut DiskInode,
         fs: &mut MutexGuard<EasyFileSystem>,
     ) {
-        if new_size < disk_inode.size {
+        if new_size < disk_inode.size {     //无需扩容 空间足够
             return;
         }
-        let blocks_needed = disk_inode.blocks_num_needed(new_size);
+        let blocks_needed = disk_inode.blocks_num_needed(new_size); //newsize需要的块-原有的块
         let mut v: Vec<u32> = Vec::new();
         for _ in 0..blocks_needed {
-            v.push(fs.alloc_data());
+            v.push(fs.alloc_data());    //一个个块分配 bitmap中一一对应
         }
         disk_inode.increase_size(new_size, v, &self.block_device);
     }
@@ -128,7 +130,7 @@ impl Inode {
         });
 
         let (block_id, block_offset) = fs.get_disk_inode_pos(new_inode_id);
-        block_cache_sync_all();
+        //block_cache_sync_all();
         // return inode
         Some(Arc::new(Self::new(
             block_id,
@@ -164,10 +166,10 @@ impl Inode {
     pub fn write_at(&self, offset: usize, buf: &[u8]) -> usize {
         let mut fs = self.fs.lock();
         let size = self.modify_disk_inode(|disk_inode| {
-            self.increase_size((offset + buf.len()) as u32, disk_inode, &mut fs);
+            self.increase_size((offset + buf.len()) as u32, disk_inode, &mut fs);   //先扩容
             disk_inode.write_at(offset, buf, &self.block_device)
         });
-        block_cache_sync_all();
+        //block_cache_sync_all();
         size
     }
     /// Clear the data in current inode
@@ -175,12 +177,112 @@ impl Inode {
         let mut fs = self.fs.lock();
         self.modify_disk_inode(|disk_inode| {
             let size = disk_inode.size;
-            let data_blocks_dealloc = disk_inode.clear_size(&self.block_device);
+            let data_blocks_dealloc = disk_inode.clear_size(&self.block_device);    //所有待销毁的块
             assert!(data_blocks_dealloc.len() == DiskInode::total_blocks(size) as usize);
             for data_block in data_blocks_dealloc.into_iter() {
                 fs.dealloc_data(data_block);
             }
         });
-        block_cache_sync_all();
+        //block_cache_sync_all();
     }
+    /// is dir or file
+    pub fn inode_type(&self)->isize{
+        self.read_disk_inode(|disk_inode|{
+            if disk_inode.is_dir(){
+                0
+            }else if disk_inode.is_file() {
+                1
+            }else {
+                -1  //未定义
+            }
+        })
+    }
+    ///get stat of a inode
+    pub fn get_stat(&self) ->(u64,u32) {
+        let fs = self.fs.lock();
+        let inode_id=fs.get_inode_id(self.block_id as u32, self.block_offset) as u64;
+
+        self.read_disk_inode(|disk_inode|{
+            let nlink=disk_inode.link_count;
+            (inode_id,nlink)
+        })
+    }
+    /// create a hard link
+    pub fn link(&self,new_name:&str,inode:Arc<Inode>)->isize{
+        let mut fs = inode.fs.lock();
+        inode.modify_disk_inode(|disk_inode|{
+            disk_inode.link_count+=1;
+        });
+        self.modify_disk_inode(|disk_inode|{
+             //需要先获取要链接inode的inode_id
+            let inode_id=fs.get_inode_id(inode.block_id as u32, inode.block_offset);
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, disk_inode, &mut fs);
+            // write dirent
+            let dirent = DirEntry::new(new_name,inode_id);
+            disk_inode.write_at(
+            file_count * DIRENT_SZ,
+            dirent.as_bytes(),
+            &self.block_device,
+            );
+        });
+        block_cache_sync_all();
+        0
+    }
+    /// delete a hard link
+    pub fn unlink(&self,name:&str)->isize{
+        //通过name找到对应的inode，把该inode的底层link_count-1
+        //在root_inode的diskinode中删除目录项
+        let mut should_delete=false;
+        let inode =match self.find(name){
+            Some(inode) =>{
+                inode.modify_disk_inode(|disk_inode|{
+                    if disk_inode.is_file(){ disk_inode.link_count-=1; }
+                    if disk_inode.link_count==0{
+                        should_delete=true;
+                    }
+                });
+                inode
+            }
+            None => {
+                return -1
+            }
+        };
+        self.modify_disk_inode(|disk_inode|{
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            let mut target_i=0;
+            for i in 0..file_count {
+                assert_eq!(
+                    disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.name() == name {  target_i=i; break;}
+            }
+            //获取最后一个目录项
+            let mut buffer=[0u8;DIRENT_SZ];
+            disk_inode.read_at(
+            (file_count-1) * DIRENT_SZ,
+            &mut buffer,
+            &self.block_device,
+            );
+            //填入空隙中
+            disk_inode.write_at(
+            target_i * DIRENT_SZ,
+            &buffer,
+            &self.block_device,
+            );
+            //更新disk_inode.size
+            disk_inode.size=((file_count-1) * DIRENT_SZ )as u32;
+        });
+        //clear!
+        if should_delete {
+            inode.clear();
+        }
+        block_cache_sync_all();
+        0
+    }
+   
 }

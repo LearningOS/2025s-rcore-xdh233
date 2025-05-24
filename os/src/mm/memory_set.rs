@@ -61,6 +61,7 @@ impl MemorySet {
         end_va: VirtAddr,
         permission: MapPermission,
     ) {
+        //println!("in insert_framed_area,start:{:?} end:{:?}",start_va,end_va);
         self.push(
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
@@ -374,6 +375,7 @@ impl MapArea {
     }
     pub fn map(&mut self, page_table: &mut PageTable) {
         for vpn in self.vpn_range {
+            //println!("in func map:map vpn{:?}",vpn);
             self.map_one(page_table, vpn);
         }
     }

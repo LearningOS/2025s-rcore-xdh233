@@ -86,6 +86,7 @@ pub struct DiskInode {
     pub indirect1: u32,
     pub indirect2: u32,
     type_: DiskInodeType,
+    pub link_count: u32,
 }
 
 impl DiskInode {
@@ -97,6 +98,7 @@ impl DiskInode {
         self.indirect1 = 0;
         self.indirect2 = 0;
         self.type_ = type_;
+        self.link_count = 1;
     }
     /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
@@ -287,7 +289,7 @@ impl DiskInode {
                     get_block_cache(*entry as usize, Arc::clone(block_device))
                         .lock()
                         .modify(0, |indirect1: &mut IndirectBlock| {
-                            for entry in indirect1.iter() {
+                            for entry in indirect1.iter() { //为什么这里不是.iter_mut().take()? 为啥
                                 v.push(*entry);
                             }
                         });

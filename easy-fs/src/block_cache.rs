@@ -60,7 +60,7 @@ impl BlockCache {
     pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
         f(self.get_mut(offset))
     }
-
+    
     pub fn sync(&mut self) {
         if self.modified {
             self.modified = false;

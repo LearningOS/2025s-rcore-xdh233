@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, Stat, StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
+use core::cell::RefMut;
 
 /// inode in memory
 /// A wrapper around a filesystem inode
@@ -41,7 +42,7 @@ impl OSInode {
     pub fn read_all(&self) -> Vec<u8> {
         let mut inner = self.inner.exclusive_access();
         let mut buffer: Vec<u8> = Vec::with_capacity(512);
-        buffer.resize(512, 0);
+        buffer.resize(512, 0);  //如果不resize，则其长度实际为0,
         let mut v: Vec<u8> = Vec::new();
         loop {
             let len = inner.inode.read_at(inner.offset, &mut buffer);
@@ -53,9 +54,26 @@ impl OSInode {
         }
         v
     }
+    /// Get the mutable reference of the inner TCB
+    pub fn inner_exclusive_access(&self) -> RefMut<'_, OSInodeInner> {
+        self.inner.exclusive_access()
+    }
+    /// link
+    pub fn link(&self,new_name:&str)->isize{
+        //正常的思路是获取当前inode 的父目录 然后调用父目录的link
+        //但是在当前实现中所有文件的父目录都是root 所以用ROOT_INODE
+        let inner = self.inner.exclusive_access();
+        ROOT_INODE.link(new_name,inner.inode.clone())
+    }
+    /// unlink 
+    pub fn unlink(&self,name:&str)->isize{
+        //let inner = self.inner.exclusive_access();
+        ROOT_INODE.unlink(name)
+    }
 }
 
 lazy_static! {
+    ///root_inode
     pub static ref ROOT_INODE: Arc<Inode> = {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
@@ -155,5 +173,18 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn fstat(&self) -> Stat {
+        let inner = self.inner.exclusive_access();
+        let (inode_id,link_count)=inner.inode.get_stat();
+        let mut mode=StatMode::NULL;
+        if 0==inner.inode.inode_type() {
+            mode|= StatMode::DIR;
+        }else if 1==inner.inode.inode_type(){
+            mode|= StatMode::FILE;
+        }else{
+            panic!("unknown type of inode!");
+        }
+        Stat { dev: 0, ino: inode_id, mode: mode, nlink: link_count, pad: [0;7] }
     }
 }

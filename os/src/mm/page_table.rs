@@ -100,6 +100,7 @@ impl PageTable {
             }
             if !pte.is_valid() {
                 let frame = frame_alloc().unwrap();
+                //需要清零？maybe
                 *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);
             }
@@ -115,7 +116,8 @@ impl PageTable {
         for (i, idx) in idxs.iter().enumerate() {
             let pte = &mut ppn.get_pte_array()[*idx];
             if i == 2 {
-                result = Some(pte);
+                //result = Some(pte);
+                if pte.is_valid() { result =  Some(pte) } else { result =None }; // 仅返回有效项 为什么改了这行就ok了？？
                 break;
             }
             if !pte.is_valid() {
@@ -128,6 +130,7 @@ impl PageTable {
     /// set the map between virtual page number and physical page number
     #[allow(unused)]
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+        //println!("in pagetable.map,vpn{:?}",vpn);
         let pte = self.find_pte_create(vpn).unwrap();
         assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);

@@ -1,5 +1,5 @@
 use super::{
-    block_cache_sync_all, get_block_cache, Bitmap, BlockDevice, DiskInode, DiskInodeType, Inode,
+    get_block_cache, Bitmap, BlockDevice, DiskInode, DiskInodeType, Inode,
     SuperBlock,
 };
 use crate::BLOCK_SZ;
@@ -24,19 +24,19 @@ impl EasyFileSystem {
     pub fn create(
         block_device: Arc<dyn BlockDevice>,
         total_blocks: u32,
-        inode_bitmap_blocks: u32,
+        inode_bitmap_blocks: u32,           //预留给inode位图的块的数量
     ) -> Arc<Mutex<Self>> {
         // calculate block size of areas & create bitmaps
         let inode_bitmap = Bitmap::new(1, inode_bitmap_blocks as usize);
-        let inode_num = inode_bitmap.maximum();
-        let inode_area_blocks =
+        let inode_num = inode_bitmap.maximum();     //记录该位图一共有多少位——能管理多少个inode
+        let inode_area_blocks =                       //记录实际存放所有inode结构体需要的块数
             ((inode_num * core::mem::size_of::<DiskInode>() + BLOCK_SZ - 1) / BLOCK_SZ) as u32;
-        let inode_total_blocks = inode_bitmap_blocks + inode_area_blocks;
-        let data_total_blocks = total_blocks - 1 - inode_total_blocks;
-        let data_bitmap_blocks = (data_total_blocks + 4096) / 4097;
-        let data_area_blocks = data_total_blocks - data_bitmap_blocks;
+        let inode_total_blocks = inode_bitmap_blocks + inode_area_blocks;   //位图+实际存放 的总块数
+        let data_total_blocks = total_blocks - 1 - inode_total_blocks;      //存放数据块的总块数——总块数-超级块*1-inode占用的总块数
+        let data_bitmap_blocks = (data_total_blocks + 4096) / 4097;         //一个位图块对应4096个数据块 所以/4097?
+        let data_area_blocks = data_total_blocks - data_bitmap_blocks;      //真正的数据块
         let data_bitmap = Bitmap::new(
-            (1 + inode_bitmap_blocks + inode_area_blocks) as usize,
+            (1 + inode_bitmap_blocks + inode_area_blocks) as usize, //这里为什么不直接inode_total_blocks?
             data_bitmap_blocks as usize,
         );
         let mut efs = Self {
@@ -78,7 +78,6 @@ impl EasyFileSystem {
             .modify(root_inode_offset, |disk_inode: &mut DiskInode| {
                 disk_inode.initialize(DiskInodeType::Directory);
             });
-        block_cache_sync_all();
         Arc::new(Mutex::new(efs))
     }
     /// Open a block device as a filesystem
@@ -120,6 +119,12 @@ impl EasyFileSystem {
             block_id,
             (inode_id % inodes_per_block) as usize * inode_size,
         )
+    }
+    /// get inodeid from block id and offset
+    pub fn get_inode_id(&self,block_id:u32,block_offset:usize) -> u32{
+        let inode_size=core::mem::size_of::<DiskInode>() ;
+        let inodes_per_block=(BLOCK_SZ/inode_size) as u32;
+        (block_id-self.inode_area_start_block)*inodes_per_block+block_offset as u32/inode_size as u32
     }
     /// Get data block by id
     pub fn get_data_block_id(&self, data_block_id: u32) -> u32 {
